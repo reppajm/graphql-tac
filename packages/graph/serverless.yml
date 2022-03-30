@@ -1,0 +1,95 @@
+service: graphql-tac-todo
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: ap-southeast-2
+  lambdaHashingVersion: 20201221
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "s3:ListBucket"
+            - "s3:GetObject"
+            - "s3:PutObject"
+            - "s3:DeleteObject"
+            - "dynamodb:PutItem"
+            - "dynamodb:UpdateItem"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:Query"
+            - "dynamodb:Scan"
+            - "dynamodb:BatchGetItem"
+            - "dynamodb:BatchWriteItem"
+            - "cognito-idp:AdminCreateUser"
+            - "cognito-idp:AdminAddUserToGroup"
+            - "cognito-idp:AdminRemoveUserFromGroup"
+            - "cognito-idp:AdminUpdateUserAttributes"
+            - "cognito-idp:AdminGetUser"
+          Resource: "*"
+plugins:
+  - serverless-dynamodb-local
+  - serverless-offline
+  - serverless-appsync-simulator
+  - serverless-appsync-plugin
+  - serverless-webpack
+
+functions:
+  query-fn:
+    handler: functions/query.handler
+  mutation-fn:
+    handler: functions/mutation.handler
+
+custom:
+  dynamodb:
+    # If you only want to use DynamoDB Local in some stages, declare them here
+    stages:
+      - dev
+    start:
+      port: 8000
+      heapInitial: 200m
+      heapMax: 1g
+      migrate: true
+      seed: true
+      convertEmptyValues: true
+      # Uncomment only if you already have a DynamoDB running locally
+      noStart: true
+  appsync-simulator:
+    apiKey: 0123456789
+
+  appSync:
+    name: AppSyncTodoApp
+    schema: schema.graphql
+    authenticationType: API_KEY
+    userPoolConfig:
+      defaultAction: ALLOW
+      userPoolId: !Ref CognitoUserPool
+    additionalAuthenticationProviders:
+      - authenticationType: AWS_IAM
+    mappingTemplatesLocation: mapping-templates
+
+    mappingTemplates:
+      - dataSource: LambdaQueryDS
+        type: Query
+        field: todos
+        request: false
+        response: false
+      - dataSource: LambdaMutationDS
+        type: Mutation
+        field: todoCreate
+        request: false
+        response: false
+
+    dataSources:
+      - type: AWS_LAMBDA
+        name: LambdaQueryDS
+        config:
+          functionName: query-fn
+      - type: AWS_LAMBDA
+        name: LambdaMutationDS
+        config:
+          functionName: mutation-fn
+
+resources: # CloudFormation template syntax
+  - ${file(./resources.yml)}
